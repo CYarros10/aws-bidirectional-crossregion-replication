@@ -1,0 +1,221 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Deploy Bi-Directional Cross-Region Replication on two S3 Buckets
+
+Parameters:
+
+  pBucketName:
+    Type: String
+    Description: bucket name prefix for both regional buckets
+    MinLength: '3'
+
+  pLambdaS3Bucket:
+    Type: String
+    Description: S3 - bucket containing lambda zip
+
+  pLambdaFileName:
+    Type: String
+    Description: S3 - file name for lambda zip
+    Default: deploy_bidirectional_crr.zip
+
+  pRegion1:
+    Type: String
+    Description: first region for s3 bucket
+    MinLength: '3'
+    Default: us-east-1
+
+  pRegion2:
+    Type: String
+    Description: second region for s3 bucket
+    MinLength: '3'
+    Default: us-west-2
+
+Resources:
+
+  # IAM
+  # -----------------------------------------------------------
+
+  rS3CRRRoleForBucket1ToBucket2:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: [s3.amazonaws.com]
+            Action:
+              - sts:AssumeRole
+
+  rS3CRRPolicyForBucket1ToBucket2:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "s3crr_policy_for_${pBucketName}_1"
+      Roles:
+        - !Ref rS3CRRRoleForBucket1ToBucket2
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - "s3:Get*"
+              - "s3:ListBucket"
+            Resource:
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}"
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}/*"
+
+          -
+            Effect: Allow
+            Action:
+              - "s3:ReplicateDelete"
+              - "s3:ReplicateObject"
+              - "s3:ReplicateTags"
+              - "s3:GetObjectVersionTagging"
+            Resource: !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}/*"
+
+  rS3CRRRoleForBucket2ToBucket1:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: [s3.amazonaws.com]
+            Action:
+              - sts:AssumeRole
+
+  rS3CRRPolicyForBucket2ToBucket1:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "s3crr_policy_for_${pBucketName}_2"
+      Roles:
+        - !Ref rS3CRRRoleForBucket2ToBucket1
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - "s3:Get*"
+              - "s3:ListBucket"
+            Resource:
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}"
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}/*"
+          -
+            Effect: Allow
+            Action:
+              - "s3:ReplicateDelete"
+              - "s3:ReplicateObject"
+              - "s3:ReplicateTags"
+              - "s3:GetObjectVersionTagging"
+            Resource: !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}/*"
+
+  rLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  rLambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: 'lambda_policy_for_crr'
+      Roles:
+        - !Ref rLambdaRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'logs:GetLogEvents'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 's3:Get*'
+              - 's3:List*'
+              - 's3:Delete*'
+              - 's3:Put*'
+            Resource:
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}"
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}"
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}/*"
+              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}/*"
+          - Effect: Allow
+            Action:
+              - 'iam:GetRole'
+              - 'iam:PassRole'
+            Resource:
+              - !GetAtt rS3CRRRoleForBucket2ToBucket1.Arn
+              - !GetAtt rS3CRRRoleForBucket1ToBucket2.Arn
+
+  # S3
+  # -----------------------------------------------------------
+
+  rS3Bucket1:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${pBucketName}-${pRegion1}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  # Lambda
+  # -----------------------------------------------------------
+
+  rLambdaBiDirectionCRRDeployer:
+    Type: AWS::Serverless::Function
+    DependsOn: [rS3Bucket1]
+    Properties:
+      CodeUri:
+        Bucket: !Ref pLambdaS3Bucket
+        Key: !Ref pLambdaFileName
+      Timeout: 120
+      MemorySize: 128
+      Description: >
+        deploy s3 bucket in another region and enable bidirectional crr
+      FunctionName: deploy_bidirectional_crr
+      Handler: deploy_bidirectional_crr.lambda_handler
+      Role: !GetAtt rLambdaRole.Arn
+      Runtime: python3.7
+      Environment:
+        Variables:
+          S3_BUCKET_1: !Sub "${pBucketName}-${pRegion1}"
+          S3_BUCKET_2: !Sub "${pBucketName}-${pRegion2}"
+          ROLE_ARN_1: !GetAtt rS3CRRRoleForBucket1ToBucket2.Arn
+          ROLE_ARN_2: !GetAtt rS3CRRRoleForBucket2ToBucket1.Arn
+          REGION_1: !Ref pRegion1
+          REGION_2: !Ref pRegion2
+
+  rInvokeLambda:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn: [rS3Bucket1, rLambdaBiDirectionCRRDeployer]
+    Version: "1.0"
+    Properties:
+      ServiceToken: !GetAtt rLambdaBiDirectionCRRDeployer.Arn
+
+Outputs:
+  oS3Bucket1:
+    Description: S3 bucket in first region
+    Value: !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}"
+
+  oS3Bucket2:
+    Description: S3 Bucket in second region
+    Value: !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}"

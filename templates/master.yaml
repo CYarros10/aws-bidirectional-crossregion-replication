@@ -19,17 +19,27 @@ Parameters:
     Description: S3 - file name for lambda zip
     Default: deploy_bidirectional_crr.zip
 
-  pRegion1:
-    Type: String
-    Description: first region for s3 bucket
-    MinLength: '3'
-    Default: us-east-1
-
   pRegion2:
     Type: String
-    Description: second region for s3 bucket
+    Description: >
+      second region for s3 bucket. must be a different region than
+      the one this cloudformation template is being deployed in.
     MinLength: '3'
     Default: us-west-2
+    AllowedValues:
+      - us-east-1
+      - us-east-2
+      - us-west-1
+      - us-west-2
+      - ca-central-1
+      - eu-west-1
+      - eu-west-2
+      - eu-central-1
+      - ap-northeast-1
+      - ap-northeast-2
+      - ap-southeast-1
+      - ap-southeast-2
+      - sa-east-1
 
 Resources:
 
@@ -64,8 +74,8 @@ Resources:
               - "s3:Get*"
               - "s3:ListBucket"
             Resource:
-              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}"
-              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}/*"
+              - !Sub "arn:aws:s3:::${pBucketName}-${AWS::Region}"
+              - !Sub "arn:aws:s3:::${pBucketName}-${AWS::Region}/*"
 
           -
             Effect: Allow
@@ -113,7 +123,7 @@ Resources:
               - "s3:ReplicateObject"
               - "s3:ReplicateTags"
               - "s3:GetObjectVersionTagging"
-            Resource: !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}/*"
+            Resource: !Sub "arn:aws:s3:::${pBucketName}-${AWS::Region}/*"
 
   rLambdaRole:
     Type: AWS::IAM::Role
@@ -150,10 +160,11 @@ Resources:
               - 's3:List*'
               - 's3:Delete*'
               - 's3:Put*'
+              - 's3:Create*'
             Resource:
-              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}"
+              - !Sub "arn:aws:s3:::${pBucketName}-${AWS::Region}"
               - !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}"
-              - !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}/*"
+              - !Sub "arn:aws:s3:::${pBucketName}-${AWS::Region}/*"
               - !Sub "arn:aws:s3:::${pBucketName}-${pRegion2}/*"
           - Effect: Allow
             Action:
@@ -169,7 +180,7 @@ Resources:
   rS3Bucket1:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${pBucketName}-${pRegion1}"
+      BucketName: !Sub "${pBucketName}-${AWS::Region}"
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -197,11 +208,11 @@ Resources:
       Runtime: python3.7
       Environment:
         Variables:
-          S3_BUCKET_1: !Sub "${pBucketName}-${pRegion1}"
+          S3_BUCKET_1: !Sub "${pBucketName}-${AWS::Region}"
           S3_BUCKET_2: !Sub "${pBucketName}-${pRegion2}"
           ROLE_ARN_1: !GetAtt rS3CRRRoleForBucket1ToBucket2.Arn
           ROLE_ARN_2: !GetAtt rS3CRRRoleForBucket2ToBucket1.Arn
-          REGION_1: !Ref pRegion1
+          REGION_1: !Ref "AWS::Region"
           REGION_2: !Ref pRegion2
 
   rInvokeLambda:
@@ -214,7 +225,7 @@ Resources:
 Outputs:
   oS3Bucket1:
     Description: S3 bucket in first region
-    Value: !Sub "arn:aws:s3:::${pBucketName}-${pRegion1}"
+    Value: !Sub "arn:aws:s3:::${pBucketName}-${AWS::Region}"
 
   oS3Bucket2:
     Description: S3 Bucket in second region

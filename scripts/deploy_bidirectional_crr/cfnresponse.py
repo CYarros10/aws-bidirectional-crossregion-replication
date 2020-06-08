@@ -19,18 +19,18 @@ def send(event, context, response_status, response_data, physical_resource_id=No
     """
     """
 
-    response_url = event['response_url']
+    response_url = event['ResponseURL']
 
     print(response_url)
 
     response_body = {}
     response_body['Status'] = response_status
     response_body['Reason'] = 'See the details in CloudWatch Log Stream: ' + context.log_stream_name
-    response_body['physical_resource_id'] = physical_resource_id or context.log_stream_name
+    response_body['PhysicalResourceId'] = physical_resource_id or context.log_stream_name
     response_body['StackId'] = event['StackId']
     response_body['RequestId'] = event['RequestId']
     response_body['LogicalResourceId'] = event['LogicalResourceId']
-    response_body['no_echo'] = no_echo
+    response_body['NoEcho'] = no_echo
     response_body['Data'] = response_data
 
     json_response_body = json.dumps(response_body)

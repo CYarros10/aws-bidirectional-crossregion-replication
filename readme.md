@@ -9,17 +9,17 @@ synced via bidirectional cross region replication.
 
 Cross-Region replication can help you do the following:
 
-Meet compliance requirements — Although Amazon S3 stores your data across
+**Meet compliance requirements** — Although Amazon S3 stores your data across
 multiple geographically distant Availability Zones by default, compliance
 requirements might dictate that you store data at even greater distances.
 Cross-Region replication allows you to replicate data between distant AWS
 Regions to satisfy these requirements.
 
-Minimize latency — If your customers are in two geographic locations, you can
+**Minimize latency** — If your customers are in two geographic locations, you can
 minimize latency in accessing objects by maintaining object copies in AWS
 Regions that are geographically closer to your users.
 
-Increase operational efficiency — If you have compute clusters in two different
+**Increase operational efficiency** — If you have compute clusters in two different
 AWS Regions that analyze the same set of objects, you might choose to maintain
 object copies in those Regions.
 
